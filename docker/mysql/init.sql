@@ -1,0 +1,3 @@
+CREATE DATABASE IF NOT EXISTS sinotaris;
+GRANT ALL PRIVILEGES ON sinotaris.* TO 'sinotaris_user'@'%';
+FLUSH PRIVILEGES;

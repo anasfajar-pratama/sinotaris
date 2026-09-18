@@ -1,0 +1,102 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: sinotaris_backend
+    working_dir: /var/www/html
+    volumes:
+      - ./backend:/var/www/html
+      - ./backend/storage/app/documents:/var/www/html/storage/app/documents
+    ports:
+      - "8000:8000"
+    environment:
+      - APP_ENV=local
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - sinotaris_net
+    command: php artisan serve --host=0.0.0.0 --port=8000
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: sinotaris_frontend
+    working_dir: /app
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    ports:
+      - "3000:3000"
+    environment:
+      - VITE_API_URL=http://localhost:8000/api/v1
+      - VITE_APP_NAME=SiNotaris
+    networks:
+      - sinotaris_net
+    command: npm run dev -- --host 0.0.0.0 --port 3000
+
+  db:
+    image: mysql:8.0
+    container_name: sinotaris_db
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: sinotaris
+      MYSQL_USER: sinotaris_user
+      MYSQL_PASSWORD: sinotaris_pass
+      MYSQL_ROOT_PASSWORD: root_password
+    ports:
+      - "3306:3306"
+    volumes:
+      - sinotaris_db_data:/var/lib/mysql
+      - ./docker/mysql/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot_password"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - sinotaris_net
+
+  redis:
+    image: redis:7-alpine
+    container_name: sinotaris_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    networks:
+      - sinotaris_net
+
+  mailhog:
+    image: mailhog/mailhog
+    container_name: sinotaris_mailhog
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+    networks:
+      - sinotaris_net
+
+  nginx:
+    image: nginx:alpine
+    container_name: sinotaris_nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf
+    depends_on:
+      - backend
+      - frontend
+    networks:
+      - sinotaris_net
+
+volumes:
+  sinotaris_db_data:
+
+networks:
+  sinotaris_net:
+    driver: bridge

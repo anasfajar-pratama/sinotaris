@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Shell(dir:*)",
+      "powershell",
+      "Shell(php -r \"echo 'PHP tersedia';\")",
+      "Shell(php artisan migrate:status 2>&1)",
+      "Shell(curl -s -o NUL -w \"HTTP %{http_code}\\n\" http://localhost:3000/src/pages/admin/DocumentDetail.jsx)",
+      "Shell(php -l app/Http/Controllers/Admin/DashboardController.php)",
+      "Shell(curl -s -o NUL -w \"HTTP %{http_code}\\n\" http://localhost:3000/src/pages/admin/Dashboard.jsx)",
+      "Shell(powershell -Command \"$c = Get-Content storage\\logs\\laravel.log; $idx = $c.Count - 1; $start = [Math]::Max(0, $idx - 40); ($c[$start..$idx] | Where-Object { $_ -match 'ERROR|Error|exception' } | Select-Object -First 6) -join \\\"`n\\\"\")",
+      "Shell(powershell -Command \"Select-String -Path storage\\logs\\laravel.log -Pattern 'local.ERROR|chart-data|sixMonthTrend' | Select-Object -Last 4 | ForEach-Object { $_.Line.Substring(0, [Math]::Min(600, $_.Line.Length)) }\")"
+    ],
+    "deny": [],
+    "defaultMode": "default"
+  }
+}
