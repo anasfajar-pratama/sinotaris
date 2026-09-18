@@ -1,0 +1,13 @@
+# SiNotaris SPA - fallback semua route React ke index.html
+# sehingga refresh /admin/documents dkk. tidak menghasilkan 404.
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # Jika file/direktori benar-benar ada, layani langsung.
+    RewriteCond %{REQUEST_FILENAME} -f [OR]
+    RewriteCond %{REQUEST_FILENAME} -d
+    RewriteRule ^ - [L]
+
+    # Selain itu arahkan ke index.html (React Router yang menentukan route).
+    RewriteRule ^ index.html [L]
+</IfModule>
