@@ -4,7 +4,8 @@ import api from '../../services/api'
 import toast from 'react-hot-toast'
 import {
   ArrowLeft, Save, User, Landmark, FileText, FolderOpen,
-  ChevronDown, CheckCircle2, Lock, Users, Plus, Trash2,
+  ChevronDown, CheckCircle2, Lock, Users, Plus, Trash2, Building2, UserCheck,
+  X, UserPlus,
 } from 'lucide-react'
 
 function FieldInput({ field, value, onChange }) {
@@ -28,9 +29,10 @@ function FieldInput({ field, value, onChange }) {
   return <input type={type} className="input" value={value || ''} onChange={(e) => onChange(e.target.value)} placeholder={field.label} />
 }
 
-const SPOUSE_DOCS = [
-  { key: 'ktp_pasangan', label: 'KTP Pasangan', is_required: false },
-  { key: 'npwp_pasangan', label: 'NPWP Pasangan', is_required: false },
+const HANDLER_TYPES = [
+  { value: 'notaris', label: 'Notaris', icon: UserCheck },
+  { value: 'ppat', label: 'PPAT', icon: Landmark },
+  { value: 'ppat_rekanan', label: 'PPAT Rekanan', icon: Building2 },
 ]
 
 function DocRow({ doc, file, onChoose }) {
@@ -127,10 +129,12 @@ export default function AdminDocumentCreate() {
   const [form, setForm] = useState({
     type_id: '', client_id: '', title: '', description: '',
     priority: 'normal', deadline: '', notes: '',
+    handler_type: '', handler_name: '', handler_region: '',
   })
   const [actors, setActors] = useState([])
   const [assets, setAssets] = useState([])
   const [savingAll, setSavingAll] = useState(false)
+  const [addActorPicker, setAddActorPicker] = useState(false)
 
   const orderSaved = !!docId
 
@@ -214,9 +218,14 @@ export default function AdminDocumentCreate() {
     if (!docId) { toast.error('Simpan dulu card Order'); return false }
 
     // Validasi field wajib dari template.
-    const required = (entity.def?.fields || []).filter((f) => f.is_required)
-    const missing = required.find((f) => !entity.data[f.key])
-    if (missing) { toast.error(`Lengkapi field wajib: ${missing.label}`); return false }
+    const isPt = kind === 'actors' && entity.data?.actor_kind === 'pt'
+    if (isPt) {
+      if (!entity.data?.company_name) { toast.error('Lengkapi field wajib: Nama Perusahaan (PT)'); return false }
+    } else {
+      const required = (entity.def?.fields || []).filter((f) => f.is_required)
+      const missing = required.find((f) => !entity.data[f.key])
+      if (missing) { toast.error(`Lengkapi field wajib: ${missing.label}`); return false }
+    }
 
     const seg = kind === 'actors' ? 'actors' : 'assets'
     const setSaving = (val) => {
@@ -273,8 +282,16 @@ export default function AdminDocumentCreate() {
     fn((arr) => arr.map((a, idx) => {
       if (idx !== i) return a
       const data = { ...a.data, [key]: val }
+      // Jika actor_kind berubah, reset data sesuai jenis
+      if (key === 'actor_kind') {
+        if (val === 'pt') {
+          return { ...a, data: { actor_kind: 'pt', company_name: '', company_id: '', npwp: '', company_address: '', phone: '' }, files: {} }
+        } else {
+          return { ...a, data: { actor_kind: 'perorangan' }, files: {} }
+        }
+      }
       // Jika status perkawinan bukan menikah, hapus data pasangan & file pasangan.
-      if (key === 'marital_status' && val !== 'married') {
+      if (key === 'marital_status' && !['married', 'married_foreign', 'married_prenup'].includes(val)) {
         delete data.spouse_name
         delete data.spouse_nik
         const files = { ...a.files }
@@ -307,10 +324,18 @@ export default function AdminDocumentCreate() {
     toast.success(`${kind === 'actors' ? 'Pihak' : 'Aset'} dihapus`)
   }
 
+  const addActorWithDef = (def) => {
+    setActors((arr) => [...arr, { def, data: {}, files: {}, id: null, saved: false, saving: false }])
+    setAddActorPicker(false)
+  }
   const addActor = () => {
     if (!template?.actors?.length) return
-    const def = template.actors[0]
-    setActors((arr) => [...arr, { def, data: {}, files: {}, id: null, saved: false, saving: false }])
+    if (template.actors.length === 1) {
+      addActorWithDef(template.actors[0])
+      return
+    }
+    // Lebih dari satu tipe pihak di template → biarkan user memilih.
+    setAddActorPicker(true)
   }
   const addAsset = () => {
     if (!template?.assets?.length) return
@@ -472,9 +497,9 @@ export default function AdminDocumentCreate() {
                 )}
               </div>
               <div>
-                <label className="label">Klien <span className="text-red-500">*</span></label>
+                <label className="label">Nasabah <span className="text-red-500">*</span></label>
                 <select className="input" value={form.client_id} onChange={(e) => set('client_id', e.target.value)} required>
-                  <option value="">Pilih klien...</option>
+                  <option value="">Pilih nasabah...</option>
                   {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </div>
@@ -513,6 +538,41 @@ export default function AdminDocumentCreate() {
               <textarea className="input h-20 resize-none" value={form.notes} onChange={(e) => set('notes', e.target.value)} placeholder="Catatan internal..." />
             </div>
 
+            <div className="border-t border-gray-200 pt-4">
+              <label className="label">Pejabat Pembuat Akta</label>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+                {HANDLER_TYPES.map((o) => {
+                  const Icon = o.icon
+                  const active = form.handler_type === o.value
+                  return (
+                    <button
+                      key={o.value}
+                      type="button"
+                      onClick={() => set('handler_type', o.value)}
+                      className={`flex items-center gap-2 p-3 rounded-lg border text-left transition-colors ${
+                        active ? 'border-primary-600 bg-primary-50 ring-1 ring-primary-600' : 'border-gray-200 bg-white hover:bg-gray-50'
+                      }`}
+                    >
+                      <Icon size={18} className={active ? 'text-primary-700' : 'text-gray-500'} />
+                      <span className={`text-sm font-medium ${active ? 'text-primary-700' : 'text-gray-700'}`}>{o.label}</span>
+                    </button>
+                  )
+                })}
+              </div>
+              {form.handler_type && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="label">Nama {HANDLER_TYPES.find(h => h.value === form.handler_type)?.label}</label>
+                    <input className="input" value={form.handler_name} onChange={(e) => set('handler_name', e.target.value)} placeholder="Nama pejabat..." />
+                  </div>
+                  <div>
+                    <label className="label">Wilayah Kerja</label>
+                    <input className="input" value={form.handler_region} onChange={(e) => set('handler_region', e.target.value)} placeholder="Wilayah kerja..." />
+                  </div>
+                </div>
+              )}
+            </div>
+
             <div className="flex gap-3">
               <button type="submit" disabled={savingOrder || !orderFilled} className="btn-primary">
                 <Save size={16} /> {savingOrder ? 'Menyimpan...' : 'Simpan Order'}
@@ -539,6 +599,20 @@ export default function AdminDocumentCreate() {
             ) : (
               actors.map((actor, i) => {
                 const saved = !!actor.id
+                const actorKind = actor.data.actor_kind || 'perorangan'
+                const maritalStatus = actor.data.marital_status
+                const isPembeli = actor.def.actor_type.key === 'pembeli'
+                const isMarried = ['married', 'married_foreign', 'married_prenup'].includes(maritalStatus)
+
+                // Get dynamic docs based on marital status (dedup: exclude keys already in base docs)
+                const baseDocKeys = new Set((actor.def.documents || []).map(d => d.key))
+                const maritalDocs = maritalStatus && template?.marital_docs?.[maritalStatus]
+                  ? template.marital_docs[maritalStatus].filter(d => !baseDocKeys.has(d.key))
+                  : []
+
+                // PT docs
+                const ptDocs = actorKind === 'pt' && template?.pt_docs ? template.pt_docs : []
+
                 return (
                   <div key={`actor-${i}`} className="border border-gray-200 rounded-xl p-4">
                     <div className="flex items-center gap-2 mb-4">
@@ -553,10 +627,69 @@ export default function AdminDocumentCreate() {
                       )}
                     </div>
 
-                    {actor.def.fields?.length > 0 && (
+                    {/* Actor Kind Toggle */}
+                    {!saved && (
+                      <div className="mb-4">
+                        <label className="label">Jenis Pihak</label>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setEntityData('actors', i, 'actor_kind', 'perorangan')}
+                            className={`flex-1 py-2 px-3 rounded-lg border text-sm font-medium transition-colors ${
+                              actorKind === 'perorangan' ? 'border-primary-600 bg-primary-50 text-primary-700' : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                            }`}
+                          >
+                            <User size={14} className="inline mr-1" /> Perorangan
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setEntityData('actors', i, 'actor_kind', 'pt')}
+                            className={`flex-1 py-2 px-3 rounded-lg border text-sm font-medium transition-colors ${
+                              actorKind === 'pt' ? 'border-primary-600 bg-primary-50 text-primary-700' : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                            }`}
+                          >
+                            <Building2 size={14} className="inline mr-1" /> Perusahaan (PT)
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Gunakan Data Nasabah button for Pembeli */}
+                    {isPembeli && !saved && form.client_id && (
+                      <div className="mb-4 p-3 bg-blue-50 rounded-lg">
+                        <p className="text-sm text-blue-800 mb-2">Gunakan data nasabah yang sudah terdaftar?</p>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            try {
+                              const res = await api.post(`/admin/orders/${docId}/actors/from-client`, {
+                                client_id: form.client_id,
+                                actor_type_key: 'pembeli',
+                              })
+                              const newActor = res.data.actor
+                              setActors((arr) => arr.map((a, idx) => idx === i ? {
+                                ...a,
+                                id: newActor.id,
+                                data: newActor.data,
+                                saved: true,
+                              } : a))
+                              toast.success('Data nasabah berhasil dimuat')
+                            } catch (err) {
+                              toast.error(err.response?.data?.message || 'Gagal memuat data nasabah')
+                            }
+                          }}
+                          className="btn-secondary text-sm"
+                        >
+                          <UserCheck size={14} className="inline mr-1" /> Gunakan Data Nasabah
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Perorangan fields */}
+                    {actorKind === 'perorangan' && actor.def.fields?.length > 0 && (
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                         {actor.def.fields
-                          .filter((f) => !['spouse_name', 'spouse_nik'].includes(f.key) || actor.data['marital_status'] === 'married')
+                          .filter((f) => !['spouse_name', 'spouse_nik'].includes(f.key) || isMarried)
                           .map((f) => (
                           <div key={f.key}>
                             <label className="label">
@@ -568,17 +701,53 @@ export default function AdminDocumentCreate() {
                       </div>
                     )}
 
-                    {actor.def.documents?.length > 0 && (
+                    {/* PT fields */}
+                    {actorKind === 'pt' && (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                        <div>
+                          <label className="label">Nama Perusahaan (PT) <span className="text-red-500">*</span></label>
+                          <input className="input" value={actor.data.company_name || ''} onChange={(e) => setEntityData('actors', i, 'company_name', e.target.value)} placeholder="Nama PT..." />
+                        </div>
+                        <div>
+                          <label className="label">NIB (Nomor Induk Berusaha)</label>
+                          <input className="input" value={actor.data.company_id || ''} onChange={(e) => setEntityData('actors', i, 'company_id', e.target.value)} placeholder="NIB..." />
+                        </div>
+                        <div>
+                          <label className="label">NPWP Perusahaan</label>
+                          <input className="input" value={actor.data.npwp || ''} onChange={(e) => setEntityData('actors', i, 'npwp', e.target.value)} placeholder="NPWP PT..." />
+                        </div>
+                        <div>
+                          <label className="label">No. Telepon / WhatsApp</label>
+                          <input className="input" value={actor.data.phone || ''} onChange={(e) => setEntityData('actors', i, 'phone', e.target.value)} placeholder="No. telepon..." />
+                        </div>
+                        <div className="md:col-span-2">
+                          <label className="label">Alamat Perusahaan</label>
+                          <textarea className="input h-20 resize-none" value={actor.data.company_address || ''} onChange={(e) => setEntityData('actors', i, 'company_address', e.target.value)} placeholder="Alamat perusahaan..." />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Base documents from template */}
+                    {actorKind === 'perorangan' && actor.def.documents?.length > 0 && (
                       <div className="pt-3 border-t border-gray-100">
-                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Dokumen Pihak</p>
+                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Dokumen Dasar</p>
                         <DocTable docs={actor.def.documents} files={actor.files} onAdd={(docKey) => setEntityFile('actors', i, docKey)} />
                       </div>
                     )}
 
-                    {actor.data['marital_status'] === 'married' && (
+                    {/* Marital status-based documents */}
+                    {actorKind === 'perorangan' && maritalDocs.length > 0 && (
                       <div className="pt-3 border-t border-gray-100">
-                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Dokumen Pasangan</p>
-                        <DocTable docs={SPOUSE_DOCS} files={actor.files} onAdd={(docKey) => setEntityFile('actors', i, docKey)} />
+                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Dokumen Berdasarkan Status Perkawinan</p>
+                        <DocTable docs={maritalDocs} files={actor.files} onAdd={(docKey) => setEntityFile('actors', i, docKey)} />
+                      </div>
+                    )}
+
+                    {/* PT documents */}
+                    {actorKind === 'pt' && ptDocs.length > 0 && (
+                      <div className="pt-3 border-t border-gray-100">
+                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Dokumen Perusahaan</p>
+                        <DocTable docs={ptDocs} files={actor.files} onAdd={(docKey) => setEntityFile('actors', i, docKey)} />
                       </div>
                     )}
 
@@ -686,6 +855,34 @@ export default function AdminDocumentCreate() {
           <span className="text-xs text-gray-400">Simpan card Order terlebih dahulu untuk melanjutkan</span>
         )}
       </div>
+
+      {/* Modal pilih tipe pihak */}
+      {addActorPicker && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setAddActorPicker(false)}>
+          <div className="bg-white rounded-xl shadow-xl p-5 w-full max-w-sm" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-base font-semibold text-gray-900">Pilih Tipe Pihak</h3>
+              <button type="button" onClick={() => setAddActorPicker(false)} className="p-1.5 rounded hover:bg-gray-100 text-gray-500">
+                <X size={16} />
+              </button>
+            </div>
+            <div className="space-y-2">
+              {(template?.actors ?? []).map((def) => (
+                <button
+                  key={def.id}
+                  type="button"
+                  onClick={() => addActorWithDef(def)}
+                  className="w-full flex items-center gap-2 p-3 rounded-lg border border-gray-200 hover:border-primary-500 hover:bg-primary-50 text-left transition-colors"
+                >
+                  <UserPlus size={16} className="text-primary-600 shrink-0" />
+                  <span className="text-sm font-medium text-gray-800">{def.actor_type?.label}</span>
+                  {def.is_required && <span className="ml-auto text-xs px-1.5 py-0.5 rounded bg-red-50 text-red-600">WAJIB</span>}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -1,3 +1,242 @@
-SQLSTATE[23000]: Integrity constraint violation: 1048 Column 'user_id' cannot be null (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: db_sinotaris, SQL: insert into `document_stage_pics` (`stage_id`, `user_id`, `assigned_by`, `action`, `note`, `assigned_at`, `updated_at`, `created_at`) values (189, ?, 1, transferred, , 2026-09-06 07:31:44, 2026-09-06 07:31:44, 2026-09-06 07:31:44))
+==================================================
+HASIL REVIEW — KEKURANGAN SISTEM (2026-09-27)
+Bagian Buat Nasabah & Buat Order
+==================================================
 
-saat menandai selesai 1 step di detail order muncul error ini
+Berdasarkan development terbaru (wizard nasabah 4-step + dynamic form order),
+berikut daftar kekurangan yang ditemukan, diurutkan dari paling kritis.
+
+==================================================
+BUG NYATA (PRIORITAS P0) — SUDAH DIPERBAIKI ✅
+==================================================
+
+1. ✅ Actor PT tidak bisa disimpan — FIXED
+   - File: DocumentCreate.jsx saveEntity
+   - Fix: Skip validasi template fields saat actor_kind === 'pt',
+     ganti dengan validasi company_name wajib.
+   - Test: PHPUnit PASS
+
+2. ✅ Nama nasabah hilang (tampil "—") di halaman order — FIXED
+   - File: DocumentController, DashboardController, ReportController
+   - Fix: Tambahkan 'client.members' di semua eager-load client.
+   - Test: test_document_show_eager_loads_client_members PASS
+
+3. ✅ Checklist dokumen ganda (KTP muncul 2x) — FIXED
+   - Frontend: filter marital_docs yang key-nya sudah ada di base docs
+   - Backend completeness(): dedup per (group, key) via $seen tracker
+   - Test: test_completeness_deduplicates_documents PASS
+
+==================================================
+REQUIREMENT P1 — SUDAH DIPERBAIKI ✅ (2026-09-27)
+==================================================
+
+4. ✅ Halaman detail nasabah tidak bisa "lanjut upload" — FIXED
+   - Requirement user: "bisa disimpan step 1 nya dan bisa lanjut di halaman
+     detail nasabah nanti untuk upload nya"
+   - Lokasi: frontend/src/pages/admin/ClientDetail.jsx
+   - Masalah: Halaman detail READ-ONLY. Tidak ada:
+     * Upload dokumen susulan
+     * Edit data nasabah / tambah anggota
+     * Edit sumber nasabah
+     * Tombol "Lanjutkan pengisian" untuk client ber-status draft
+   - Fix: Tambahkan UI upload dokumen (wajib + tambahan) per anggota,
+     tombol edit source/members, tombol "Konfirmasi" untuk finalize draft.
+
+5. ✅ Dokumen yatim saat anggota dihapus — FIXED
+   - Lokasi: ClientController::updateMembers
+   - Masalah: Member dihapus via whereNotIn('id', ...)->delete().
+     client_documents.client_member_id = nullOnDelete → dokumen tetap ada
+     tapi tidak terhubung ke siapa pun (hilang dari UI, file & row tetap).
+   - Fix: Cascade delete client_documents saat member dihapus, atau
+     reassign ke member lain / ke client (tanpa member).
+
+6. ✅ Upload dokumen duplikat — FIXED
+   - Lokasi: ClientController::uploadDocument
+   - Masalah: Tidak cek apakah doc_type + member sudah punya file.
+     Upload KTP 2x = 2 baris & 2 file fisik.
+   - Fix: Cari dokumen existing dengan (client_id, client_member_id, doc_type).
+     Jika ada, hapus file lama + update row. Jika tidak, create baru.
+     Pola sama seperti replaceActorDoc di DocumentDetail.
+
+==================================================
+INKONSISTENSI (PRIORITAS P2) — SUDAH DIPERBAIKI ✅ (2026-09-27)
+==================================================
+
+7. ✅ AjbController masih pakai enum marital lama — FIXED
+   - Lokasi: AjbController::addSeller/addBuyer (validasi marital_status)
+   - Masalah: Validasi in:single,married,widowed. Nilai baru
+     (married_foreign, married_prenup, divorced) ditolak 422.
+   - Fix: Update validasi ke 6 nilai baru.
+
+8. ✅ Handler (Pejabat Pembuat Akta) tidak bisa diedit — FIXED
+   - Lokasi: DocumentController@update, DocumentDetail.jsx
+   - Masalah: Handler fields hanya bisa diisi saat create. Tidak muncul
+     di detail, tidak diterima update.
+   - Fix: Tambahkan handler_type/name/region di update validation +
+     UI edit di detail page.
+
+9. ✅ NIK tidak unik lagi — FIXED
+   - Lokasi: client_members table, ClientController validation
+   - Masalah: Dulu clients.nik unique. Sekarang client_members.nik tanpa
+     validasi duplikasi → 2 nasabah bisa punya NIK sama.
+   - Fix: Tambah validasi unique:client_members,nik di updateMembers.
+     Opsional: tambah unique index di migrasi.
+
+10. ✅ Tidak ada transaksi DB — FIXED
+    - Lokasi: ClientController::store, updateMembers;
+      OrderController::createActorFromClient
+    - Masalah: Gagal di tengah operasi = data setengah jadi.
+    - Fix: Bungkus operasi multi-step dengan DB::transaction().
+
+11. ✅ pt_docs hardcode di controller — FIXED
+    - Lokasi: OrderController::template()
+    - Masalah: Daftar dokumen PT hardcode ['akta-pendirian', 'akta-perubahan',
+      'company-sk', 'npwp-pt']. Tidak bisa dikelola admin.
+    - Fix: Buat tabel pt_document_requirements (seperti marital), atau
+      gunakan DocumentCatalog dengan category='corporate'.
+
+12. ✅ "Tambah Pihak Lain" selalu clone actor pertama — FIXED
+    - Lokasi: DocumentCreate.jsx addActor()
+    - Masalah: Selalu clone template.actors[0] (Penjual). Tidak bisa pilih
+      tipe (mis. tambah Pembeli kedua).
+    - Fix: Tampilkan modal/dropdown pilih actor_type dari template.
+
+13. ✅ Wizard nasabah tidak punya mode edit — FIXED
+    - Lokasi: Clients.jsx, ClientDetail.jsx
+    - Masalah: Draft client tersimpan, tapi tidak ada cara lanjutkan dari
+      list. Klik Eye → detail (read-only). Tidak ada tombol Edit.
+    - Fix: Tambahkan tombol "Edit" di list → buka wizard dengan data existing,
+      atau halaman edit terpisah.
+
+14. ✅ Kolom legacy clients.name/nik/phone/email tidak terpakai — FIXED
+    - Masalah: Untuk nasabah baru (via wizard), kolom ini kosong. Accessor
+      fallback ke sini → sumber bug #2.
+    - Fix: Drop kolom legacy (breaking change) atau selalu isi dari member
+      pertama saat create/update.
+
+==================================================
+MINOR / NICE-TO-HAVE (PRIORITAS P3)
+==================================================
+
+- Dokumen "lainnya" nasabah tidak ikut ter-copy saat "Gunakan Data Nasabah"
+  (hanya 4 doc_type yang di-map: ktp_nasabah, kk, akta_nikah, ktp_pasangan).
+
+- Belum ada test untuk: updateMembers, delete dokumen, wizard step 2-4,
+  createActorFromClient dengan dokumen "lainnya".
+
+- Step 3 wizard tanpa indikator progress "x/4 dokumen wajib terupload".
+
+- Dokumen nasabah yang diupload SETELAH order dibuat tidak sinkron ke
+  checklist order (auto-link hanya saat from-client, tidak real-time sync).
+
+- Client portal (role klien) masih pakai field lama — belum di-test dengan
+  data nasabah baru.
+
+- Permission: uploadDocument pakai clients.edit — staff mungkin tidak punya.
+  Perlu verifikasi role mapping.
+
+==================================================
+URUTAN PENGERJAAN DISARANKAN
+==================================================
+
+1. P0 (bug kritis) — estimasi: kecil, bisa langsung
+   - #1 validasi PT
+   - #2 eager-load client.members
+   - #3 dedup checklist
+
+2. P1 (requirement belum terpenuhi) — estimasi: sedang
+   - #4 detail nasabah bisa upload/edit/lanjut
+   - #6 replace dokumen duplikat
+   - #5 cascade delete dokumen
+
+3. P2 (inkonsistensi) — estimasi: sedang
+   - #7 enum AJB
+   - #8 handler di detail+update
+   - #10 transaksi DB
+   - #9 cek NIK duplikat
+
+4. P3 (minor) — opsional, bisa ditunda
+   - Sisanya
+
+==================================================
+CATATAN TAMBAHAN
+==================================================
+
+- Semua test PHPUnit (27 test, 89 assertions) PASS — tidak ada regresi.
+- Frontend build OK.
+- Migrasi & seeder sudah dijalankan.
+- Struktur data baru: clients (source, source_detail, status),
+  client_members (data pribadi), client_documents (upload dokumen),
+  marital_document_requirements (mapping status → dokumen wajib).
+
+
+[x] P1 #6: Backend — replace dokumen duplikat di uploadDocument
+[x] P1 #5: Backend — cascade delete client_documents saat member dihapus
+[x] P1 #4: Frontend — ClientDetail bisa upload dokumen per anggota
+[x] P1 #4: Frontend — ClientDetail edit sumber + anggota + konfirmasi draft
+[x] Test baru untuk #5 & #6 + jalankan semua test
+
+CATATAN PENYELESAIAN P1 (2026-09-27):
+- #5: updateMembers kini hapus dokumen (row + file fisik) milik member yang
+  dihapus; tidak ada lagi dokumen yatim. Update member juga difilter ke field
+  valid (Eloquent, bukan raw query-builder update) agar aman menerima data
+  hasil load API (birth_date ISO, created_at, dll).
+- #4: ClientDetail.jsx punya: upload/ganti/hapus dokumen wajib (KTP, KK,
+  + KTP Pasangan & Akta Nikah utk status married*) dan dokumen tambahan
+  per anggota; Edit Sumber Nasabah inline; Edit Data Nasabah (tambah/ubah/
+  hapus anggota); tombol "Konfirmasi" utk finalize client draft.
+- Fix ikutan (ditemukan saat test):
+  * validasi members.*.marital_status diperlebar ke 6 nilai (sebelumnya
+    married_foreign/married_prenup ditolak 422 padahal ada di form).
+  * migrasi baru 2026_09_27_000009_make_clients_name_nullable — clients.name
+    NOT NULL padahal wizard step 1 tidak kirim nama (gagal di SQLite/strict
+    mode). Sudah di-migrate di DB dev.
+  * migrasi 000008 (widen marital_status) ditambah branch SQLite agar CHECK
+    constraint enum lama tidak menggagalkan test.
+- Test: ClientDocumentTest (7 test baru) — replace duplikat, lainnya multi,
+  beda member tidak saling replace, cascade delete dokumen member, dokumen
+  member tetap utuh, 6 marital status diterima, status invalid ditolak.
+- PHPUnit penuh: 36 test, 126 assertions — SEMUA PASS.
+- Frontend build (vite) OK.
+
+CHECKLIST P2 (2026-09-27):
+[x] P2 #7:  Backend — enum marital AjbController 6 nilai
+[x] P2 #8:  Backend+Frontend — handler bisa diedit di detail order
+[x] P2 #9:  Backend — NIK unik antar client_members
+[x] P2 #10: Backend — DB::transaction (ClientController, createActorFromClient)
+[x] P2 #11: Backend — pt_docs pindah ke tabel pt_document_requirements + seeder
+[x] P2 #12: Frontend — "Tambah Pihak Lain" bisa pilih tipe aktor
+[x] P2 #13: Frontend — tombol Edit di list nasabah → halaman detail
+[x] P2 #14: Backend — kolom legacy clients disinkron dari member pertama
+[x] Test baru P2 + jalankan semua test + build frontend
+
+CATATAN PENYELESAIAN P2 (2026-09-27):
+- #7: AjbController::addActor validasi marital_status → 6 nilai baru.
+- #8: DocumentController@update terima handler_type/name/region;
+  DocumentDetail.jsx tampilkan "Pejabat Pembuat Akta" di Informasi Order
+  + section edit di modal "Ubah Informasi Order" (toggle off = kosongkan).
+- #9: updateMembers — Rule::unique per baris (ignore id sendiri,
+  withoutTrashed) + cek duplikat NIK di dalam payload → 422.
+  Tanpa unique index DB (data lama bisa duplikat; opsi "opsional" dilewati).
+- #10: DB::transaction di ClientController::store & updateMembers,
+  OrderController::createActorFromClient.
+- #11: Tabel pt_document_requirements + model PtDocumentRequirement +
+  DynamicFormSeeder::seedPtDocumentRequirements (4 dokumen PT default,
+  sudah di-seed di DB dev). OrderController::template() dan
+  DocumentController::completeness() kini baca dari tabel.
+- #12: DocumentCreate.jsx — modal "Pilih Tipe Pihak" saat template punya
+  >1 tipe aktor (1 tipe = langsung tambah seperti sebelumnya).
+- #13: Clients.jsx — tombol ikon Pencil di kolom Aksi → halaman detail
+  (detail sudah bisa edit sumber/anggota/upload/konfirmasi sejak P1 #4).
+- #14: updateMembers menyinkron clients.name/nik/phone/email dari member
+  pertama (opsi aman, bukan drop kolom).
+- BUG DITEMUKAN & DIPERBAIKI saat test P2: regresi dari P1 #5 — member
+  BARU (tanpa id di payload) ikut ter-soft-delete oleh whereNotIn karena
+  $existingIds hanya berisi id dari payload. Fix: $keepIds kini termasuk
+  id member yang baru dibuat. Test lama tidak menangkap ini karena
+  assertDatabaseHas tidak cek deleted_at → assertion diperketat.
+- Test baru: ClientUpdateTest (5), DocumentUpdateTest (4), AjbMaritalTest (3);
+  DynamicFormTest pt_docs disesuaikan ke PtDocumentRequirement.
+- PHPUnit penuh: 48 test, 162 assertions — SEMUA PASS.
+- migrasi 2026_09_27_000010 dijalankan + seeder di DB dev.
+- Frontend build (vite) OK.

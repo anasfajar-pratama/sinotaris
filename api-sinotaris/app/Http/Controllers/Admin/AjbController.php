@@ -209,7 +209,7 @@ class AjbController extends Controller
             'npwp'           => 'nullable|string|max:30',
             'address'        => 'nullable|string',
             'phone'          => 'nullable|string|max:20',
-            'marital_status' => 'nullable|in:single,married,widowed',
+            'marital_status' => 'nullable|in:single,married,married_foreign,married_prenup,divorced,widowed',
             'spouse_name'    => 'nullable|string|max:255',
             'spouse_nik'     => 'nullable|string|max:20',
             'data'           => 'nullable|array',

@@ -60,7 +60,7 @@ export default function AdminReports() {
         {[
           { label: 'Total Order', value: stats?.total_documents, color: 'text-blue-700' },
           { label: 'Selesai', value: stats?.completed, color: 'text-green-700' },
-          { label: 'Total Klien', value: stats?.total_clients, color: 'text-purple-700' },
+          { label: 'Total Nasabah', value: stats?.total_clients, color: 'text-purple-700' },
           { label: 'Kasus AJB', value: stats?.total_ajb, color: 'text-indigo-700' },
         ].map((s, i) => (
           <div key={i} className="card p-4 text-center">

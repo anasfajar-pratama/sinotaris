@@ -13,7 +13,7 @@ class ReportController extends Controller
 {
     public function documents(Request $request): JsonResponse
     {
-        $query = Document::with(['documentType', 'client'])
+        $query = Document::with(['documentType', 'client.members'])
             ->when($request->status, fn ($q) => $q->where('status', $request->status))
             ->when($request->date_from, fn ($q) => $q->whereDate('created_at', '>=', $request->date_from))
             ->when($request->date_to, fn ($q) => $q->whereDate('created_at', '<=', $request->date_to))
@@ -43,7 +43,7 @@ class ReportController extends Controller
 
     public function exportPdf(Request $request)
     {
-        $documents = Document::with(['documentType', 'client'])->latest()->take(100)->get();
+        $documents = Document::with(['documentType', 'client.members'])->latest()->take(100)->get();
 
         // Simple PDF via dompdf
         $html = '<h1>Laporan Dokumen - SiNotaris</h1><p>Tanggal: ' . now()->format('d/m/Y H:i') . '</p>';

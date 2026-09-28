@@ -44,9 +44,9 @@ export default function AdminAjbCreate() {
         </p>
         <form onSubmit={handleSubmit} className="space-y-5">
           <div>
-            <label className="label">Klien / Pembeli <span className="text-red-500">*</span></label>
+            <label className="label">Nasabah / Pembeli <span className="text-red-500">*</span></label>
             <select className="input" value={form.client_id} onChange={(e) => set('client_id', e.target.value)} required>
-              <option value="">Pilih klien...</option>
+              <option value="">Pilih nasabah...</option>
               {clients.map((c) => <option key={c.id} value={c.id}>{c.name} — {c.nik ?? 'NIK belum diisi'}</option>)}
             </select>
           </div>

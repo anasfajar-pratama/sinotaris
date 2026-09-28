@@ -9,14 +9,17 @@ use App\Models\AssetType;
 use App\Models\Document;
 use App\Models\DocumentCatalog;
 use App\Models\DocumentType;
+use App\Models\MaritalDocumentRequirement;
 use App\Models\OrderActor;
 use App\Models\OrderActorDocument;
 use App\Models\OrderAsset;
 use App\Models\OrderAssetDocument;
 use App\Models\OrderDocument;
+use App\Models\PtDocumentRequirement;
 use App\Support\FileConverter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 
@@ -86,10 +89,35 @@ class OrderController extends Controller
             ]),
         ]);
 
+        $maritalDocs = MaritalDocumentRequirement::with('documentCatalog')
+            ->orderBy('sort_order')
+            ->get()
+            ->groupBy('marital_status')
+            ->map(fn ($items) => $items->map(fn ($item) => [
+                'key' => $item->documentCatalog->key,
+                'label' => $item->documentCatalog->label,
+                'category' => $item->documentCatalog->category,
+                'is_required' => $item->is_required,
+            ])->values());
+
+        $ptDocs = PtDocumentRequirement::with('documentCatalog')
+            ->orderBy('sort_order')
+            ->get()
+            ->filter(fn ($item) => $item->documentCatalog !== null)
+            ->map(fn ($item) => [
+                'key' => $item->documentCatalog->key,
+                'label' => $item->documentCatalog->label,
+                'category' => $item->documentCatalog->category,
+                'is_required' => $item->is_required,
+            ])
+            ->values();
+
         return response()->json([
             'document_type' => $type,
             'actors'        => $actors,
             'assets'        => $assets,
+            'marital_docs'  => $maritalDocs,
+            'pt_docs'       => $ptDocs,
         ]);
     }
 
@@ -400,5 +428,105 @@ class OrderController extends Controller
         Storage::disk('public')->delete($doc->path);
         $doc->delete();
         return response()->json(['message' => 'Dokumen berhasil dihapus']);
+    }
+
+    public function createActorFromClient(Request $request, int $documentId): JsonResponse
+    {
+        $document = Document::findOrFail($documentId);
+
+        $validator = Validator::make($request->all(), [
+            'client_id' => 'required|exists:clients,id',
+            'member_id' => 'nullable|exists:client_members,id',
+            'actor_type_key' => 'required|exists:actor_types,key',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(['message' => 'Validasi gagal', 'errors' => $validator->errors()], 422);
+        }
+
+        $client = \App\Models\Client::with('members.clientDocuments')->findOrFail($request->client_id);
+        $member = $request->member_id
+            ? $client->members->where('id', $request->member_id)->first()
+            : $client->members->first();
+
+        if (!$member) {
+            return response()->json(['message' => 'Data nasabah tidak ditemukan'], 404);
+        }
+
+        $actorType = ActorType::where('key', $request->actor_type_key)->firstOrFail();
+
+        $sortOrder = $document->actors()->where('actor_type_id', $actorType->id)->count() + 1;
+
+        // Transaksi: pembuatan pihak + copy dokumen nasabah harus atomik.
+        // (Copy file storage ikut di dalam; bila DB rollback, file sisa tidak berdampak data.)
+        $actor = DB::transaction(function () use ($document, $actorType, $member, $sortOrder, $documentId, $request) {
+            $actor = OrderActor::create([
+                'document_id' => $document->id,
+                'actor_type_id' => $actorType->id,
+                'data' => [
+                    'actor_kind' => 'perorangan',
+                    'name' => $member->name,
+                    'nik' => $member->nik,
+                    'phone' => $member->phone,
+                    'email' => $member->email,
+                    'npwp' => $member->npwp,
+                    'gender' => $member->gender,
+                    'marital_status' => $member->marital_status,
+                    'address' => $member->address,
+                ],
+                'sort_order' => $sortOrder,
+            ]);
+
+            $docTypeMap = [
+                'ktp_nasabah' => 'ktp',
+                'kk' => 'kk',
+                'akta_nikah' => 'marriage-certificate',
+                'ktp_pasangan' => 'ktp_pasangan',
+            ];
+
+            foreach ($member->clientDocuments as $clientDoc) {
+                $catalogKey = $docTypeMap[$clientDoc->doc_type] ?? null;
+                if (!$catalogKey) continue;
+
+                $catalog = DocumentCatalog::where('key', $catalogKey)->first();
+                if (!$catalog) continue;
+
+                $existingDoc = $actor->documents()->where('document_catalog_id', $catalog->id)->first();
+                if ($existingDoc) continue;
+
+                $sourcePath = $clientDoc->path;
+                $newPath = "orders/{$documentId}/actors/{$actor->id}/" . basename($sourcePath);
+
+                if (Storage::disk('public')->exists($sourcePath)) {
+                    Storage::disk('public')->copy($sourcePath, $newPath);
+
+                    OrderActorDocument::create([
+                        'order_actor_id' => $actor->id,
+                        'document_catalog_id' => $catalog->id,
+                        'filename' => basename($newPath),
+                        'original_name' => $clientDoc->original_name,
+                        'path' => $newPath,
+                        'size' => Storage::disk('public')->size($newPath),
+                        'uploaded_by' => $request->user()->id,
+                    ]);
+                }
+            }
+
+            return $actor;
+        });
+
+        $this->logActivity(
+            $request,
+            $documentId,
+            'actor_created_from_client',
+            "Pihak {$actorType->label} dibuat dari data nasabah: {$member->name}",
+            null,
+            ['actor_id' => $actor->id, 'actor_type' => $actorType->key, 'client_id' => $client->id, 'member_id' => $member->id]
+        );
+
+        return response()->json([
+            'message' => 'Pihak berhasil dibuat dari data nasabah',
+            'actor' => $actor->load(['actorType', 'documents.documentCatalog']),
+        ], 201);
     }
 }

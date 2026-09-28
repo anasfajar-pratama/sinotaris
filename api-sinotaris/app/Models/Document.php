@@ -23,6 +23,9 @@ class Document extends Model
         'deadline',
         'notes',
         'tracking_code',
+        'handler_type',
+        'handler_name',
+        'handler_region',
     ];
 
     protected $casts = [

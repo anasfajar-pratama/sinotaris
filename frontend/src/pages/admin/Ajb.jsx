@@ -64,7 +64,7 @@ export default function AdminAjb() {
               <thead className="bg-gray-50 text-gray-600 text-xs uppercase">
                 <tr>
                   <th className="text-left px-4 py-3">No. Kasus</th>
-                  <th className="text-left px-4 py-3">Klien</th>
+                  <th className="text-left px-4 py-3">Nasabah</th>
                   <th className="text-left px-4 py-3">Sumber</th>
                   <th className="text-left px-4 py-3">Progress</th>
                   <th className="text-left px-4 py-3">Status</th>

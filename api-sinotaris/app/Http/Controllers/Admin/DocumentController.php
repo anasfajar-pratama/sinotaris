@@ -11,6 +11,8 @@ use App\Models\DocumentStagePic;
 use App\Models\StageDocument;
 use App\Models\DocumentType;
 use App\Models\DocumentTypeActorDocument;
+use App\Models\MaritalDocumentRequirement;
+use App\Models\PtDocumentRequirement;
 use App\Models\ActivityLog;
 use App\Support\FileConverter;
 use App\Notifications\DocumentStatusUpdated;
@@ -23,7 +25,7 @@ class DocumentController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $query = Document::with(['documentType', 'client', 'creator'])
+        $query = Document::with(['documentType', 'client.members', 'creator'])
             ->when($request->search, fn ($q) => $q->where('title', 'like', "%{$request->search}%")
                 ->orWhere('doc_number', 'like', "%{$request->search}%"))
             ->when($request->status, fn ($q) => $q->where('status', $request->status))
@@ -57,6 +59,9 @@ class DocumentController extends Controller
             'priority'    => 'required|in:low,normal,high,urgent',
             'deadline'    => 'nullable|date|after:today',
             'notes'       => 'nullable|string',
+            'handler_type' => 'nullable|in:notaris,ppat,ppat_rekanan',
+            'handler_name' => 'nullable|string|max:255',
+            'handler_region' => 'nullable|string|max:255',
         ]);
 
         if ($validator->fails()) {
@@ -64,7 +69,7 @@ class DocumentController extends Controller
         }
 
         $document = Document::create([
-            ...$request->only(['type_id', 'client_id', 'title', 'description', 'priority', 'deadline', 'notes']),
+            ...$request->only(['type_id', 'client_id', 'title', 'description', 'priority', 'deadline', 'notes', 'handler_type', 'handler_name', 'handler_region']),
             'doc_number'    => Document::generateDocNumber(),
             'tracking_code' => Document::generateTrackingCode(),
             'created_by'    => $request->user()->id,
@@ -107,7 +112,7 @@ class DocumentController extends Controller
 
         return response()->json([
             'message'  => 'Dokumen berhasil dibuat',
-            'document' => $document->load(['documentType', 'client', 'stages']),
+            'document' => $document->load(['documentType', 'client.members', 'stages']),
         ], 201);
     }
 
@@ -116,7 +121,7 @@ class DocumentController extends Controller
         $document = Document::with([
             'documentType.requiredDocuments.documentCatalog',
             'documentType.stages',
-            'client',
+            'client.members',
             'creator',
             'files',
             'stages.handler',
@@ -139,23 +144,31 @@ class DocumentController extends Controller
     private function completeness(Document $document): array
     {
         $items = [];
+        $seen = [];
+
+        $addItem = function (string $group, ?string $key, string $label, bool $required, bool $uploaded) use (&$items, &$seen) {
+            $dedupKey = $group . '::' . ($key ?? $label);
+            if (isset($seen[$dedupKey])) return;
+            $seen[$dedupKey] = true;
+            $items[] = [
+                'group'    => $group,
+                'key'      => $key,
+                'label'    => $label,
+                'required' => $required,
+                'uploaded' => $uploaded,
+            ];
+        };
 
         // Dokumen wajib level order (wajib)
         // Upload di card Aset (OrderAssetDocument) juga dianggap memenuhi butir
         // yang sama — mis. IMB/SLF/SPPT diunggah lewat aset tetap melengkapi order.
-        $document->documentType?->requiredDocuments->each(function ($req) use (&$items, $document) {
+        $document->documentType?->requiredDocuments->each(function ($req) use ($addItem, $document) {
             $catalog = $req->documentCatalog;
             $uploadedInOrder = $document->orderDocuments->contains(fn ($d) => $d->document_catalog_id === $req->document_catalog_id);
             $uploadedInAssets = $document->assets->contains(
                 fn ($asset) => $asset->documents->contains(fn ($d) => $d->document_catalog_id === $req->document_catalog_id)
             );
-            $items[] = [
-                'group'     => 'Order',
-                'key'       => $catalog?->key,
-                'label'     => $catalog?->label ?? 'Dokumen',
-                'required'  => true,
-                'uploaded'  => $uploadedInOrder || $uploadedInAssets,
-            ];
+            $addItem('Order', $catalog?->key, $catalog?->label ?? 'Dokumen', true, $uploadedInOrder || $uploadedInAssets);
         });
 
         // Dokumen wajib per pihak (tampil sesuai aktor)
@@ -165,33 +178,47 @@ class DocumentController extends Controller
             ->orderBy('sort_order')
             ->get();
 
-        $spouseCatalogs = DocumentCatalog::whereIn('key', ['ktp_pasangan', 'npwp_pasangan'])->get()->keyBy('key');
+        // Marital status → required documents mapping
+        $maritalDocs = MaritalDocumentRequirement::with('documentCatalog')
+            ->get()
+            ->groupBy('marital_status');
+
+        // PT (badan hukum) → required documents mapping (dikelola via pt_document_requirements)
+        $ptRequirements = PtDocumentRequirement::with('documentCatalog')
+            ->orderBy('sort_order')
+            ->get();
 
         foreach ($document->actors as $actor) {
             $label = $actor->actorType?->label ?? 'Pihak';
+            $actorKind = $actor->data['actor_kind'] ?? 'perorangan';
 
+            // Base required docs from template
             foreach ($requiredDocs->where('actor_type_id', $actor->actor_type_id) as $req) {
                 $catalog = $req->documentCatalog;
-                $items[] = [
-                    'group'     => $label,
-                    'key'       => $catalog?->key,
-                    'label'     => $catalog?->label ?? 'Dokumen',
-                    'required'  => true,
-                    'uploaded'  => $actor->documents->contains(fn ($d) => $d->document_catalog_id === $req->document_catalog_id),
-                ];
+                $addItem($label, $catalog?->key, $catalog?->label ?? 'Dokumen', true,
+                    $actor->documents->contains(fn ($d) => $d->document_catalog_id === $req->document_catalog_id)
+                );
             }
 
-            // Dokumen pasangan (opsional) hanya jika status perkawinan = married
-            if (($actor->data['marital_status'] ?? null) === 'married') {
-                foreach (['ktp_pasangan' => 'KTP Pasangan', 'npwp_pasangan' => 'NPWP Pasangan'] as $key => $spLabel) {
-                    $catalog = $spouseCatalogs->get($key);
-                    $items[] = [
-                        'group'     => $label,
-                        'key'       => $key,
-                        'label'     => $spLabel,
-                        'required'  => false,
-                        'uploaded'  => $actor->documents->contains(fn ($d) => $d->document_catalog_id === $catalog?->id),
-                    ];
+            // PT documents if actor_kind = 'pt'
+            if ($actorKind === 'pt') {
+                foreach ($ptRequirements as $req) {
+                    $catalog = $req->documentCatalog;
+                    if (!$catalog) continue;
+                    $addItem($label, $catalog->key, $catalog->label, $req->is_required,
+                        $actor->documents->contains(fn ($d) => $d->document_catalog_id === $catalog->id)
+                    );
+                }
+            } else {
+                // Perorangan: add marital status-based documents
+                $maritalStatus = $actor->data['marital_status'] ?? null;
+                if ($maritalStatus && $maritalDocs->has($maritalStatus)) {
+                    foreach ($maritalDocs->get($maritalStatus) as $req) {
+                        $catalog = $req->documentCatalog;
+                        $addItem($label, $catalog?->key, $catalog?->label ?? 'Dokumen', $req->is_required,
+                            $actor->documents->contains(fn ($d) => $d->document_catalog_id === $req->document_catalog_id)
+                        );
+                    }
                 }
             }
         }
@@ -223,13 +250,16 @@ class DocumentController extends Controller
             'priority'    => 'sometimes|in:low,normal,high,urgent',
             'deadline'    => 'nullable|date',
             'notes'       => 'nullable|string',
+            'handler_type'   => 'sometimes|nullable|in:notaris,ppat,ppat_rekanan',
+            'handler_name'   => 'nullable|string|max:255',
+            'handler_region' => 'nullable|string|max:255',
         ]);
 
         if ($validator->fails()) {
             return response()->json(['message' => 'Validasi gagal', 'errors' => $validator->errors()], 422);
         }
 
-        $document->update($request->only(['title', 'description', 'priority', 'deadline', 'notes']));
+        $document->update($request->only(['title', 'description', 'priority', 'deadline', 'notes', 'handler_type', 'handler_name', 'handler_region']));
 
         ActivityLog::create([
             'user_id'    => $request->user()->id,

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import api, { storageUrl } from '../../services/api'
 import toast from 'react-hot-toast'
-import { ArrowLeft, CheckCircle, Clock, Circle, Upload, Trash2, User, Landmark, Eye, RefreshCw, Calendar, Image, Plus, Save, UserPlus, History, Pencil, X, Activity, ChevronDown } from 'lucide-react'
+import { ArrowLeft, CheckCircle, Clock, Circle, Upload, Trash2, User, Landmark, Eye, RefreshCw, Calendar, Image, Plus, Save, UserPlus, History, Pencil, X, Activity, ChevronDown, UserCheck, Building2 } from 'lucide-react'
 
 const STAGE_STATUS_ICON = {
   completed:   <CheckCircle size={20} className="text-green-500" />,
@@ -16,6 +16,13 @@ const STATUS_STYLES = { draft: 'badge-gray', in_progress: 'badge-blue', review: 
 // Kategori tugas Notaris / PPAT
 const CATEGORY_STYLES = { notaris: 'badge-purple', ppat: 'badge-blue' }
 const CATEGORY_LABELS = { notaris: 'Notaris', ppat: 'PPAT' }
+
+// Pejabat Pembuat Akta (sama seperti di DocumentCreate)
+const HANDLER_TYPES = [
+  { value: 'notaris', label: 'Notaris', icon: UserCheck },
+  { value: 'ppat', label: 'PPAT', icon: Landmark },
+  { value: 'ppat_rekanan', label: 'PPAT Rekanan', icon: Building2 },
+]
 
 const MARITAL_LABELS = { single: 'Lajang', married: 'Menikah', widowed: 'Cerai' }
 const isImageUrl = (url) => /\.(webp|jpg|jpeg|png)$/i.test(url || '')
@@ -131,7 +138,7 @@ export default function AdminDocumentDetail() {
 
   // Modal edit data (order/pihak/aset) + log aktivitas
   const [editOrderOpen, setEditOrderOpen] = useState(false)
-  const [editOrderForm, setEditOrderForm] = useState({ title: '', description: '', priority: 'normal', deadline: '', notes: '' })
+  const [editOrderForm, setEditOrderForm] = useState({ title: '', description: '', priority: 'normal', deadline: '', notes: '', handler_type: '', handler_name: '', handler_region: '' })
   const [savingEditOrder, setSavingEditOrder] = useState(false)
   const [editEntity, setEditEntity] = useState(null) // {kind:'actor'|'asset', id, label}
   const [entityTemplate, setEntityTemplate] = useState(null)
@@ -146,7 +153,7 @@ export default function AdminDocumentDetail() {
     kelengkapan: true,
     pihak: true,
     aset: true,
-    klien: true,
+    nasabah: true,
     log: true,
   })
 
@@ -342,6 +349,9 @@ export default function AdminDocumentDetail() {
       priority: doc.priority || 'normal',
       deadline: doc.deadline ? String(doc.deadline).slice(0, 10) : '',
       notes: doc.notes || '',
+      handler_type: doc.handler_type || '',
+      handler_name: doc.handler_name || '',
+      handler_region: doc.handler_region || '',
     })
     setEditOrderOpen(true)
   }
@@ -497,12 +507,22 @@ export default function AdminDocumentDetail() {
             <div className="grid grid-cols-2 gap-4 text-sm">
               <div><p className="text-gray-500">Jenis</p><p className="font-medium">{doc.document_type?.name}</p></div>
               <div><p className="text-gray-500">Kategori Tugas</p><p className="font-medium">{doc.document_type?.category ? (CATEGORY_LABELS[doc.document_type.category] ?? doc.document_type.category) : '—'}</p></div>
-              <div><p className="text-gray-500">Klien</p><p className="font-medium">{doc.client?.name ?? '—'}</p></div>
+              <div><p className="text-gray-500">Nasabah</p><p className="font-medium">{doc.client?.name ?? '—'}</p></div>
               <div><p className="text-gray-500">Dibuat oleh</p><p className="font-medium">{doc.creator?.name}</p></div>
               <div><p className="text-gray-500">Deadline</p><p className="font-medium">{doc.deadline ? new Date(doc.deadline).toLocaleDateString('id-ID') : '—'}</p></div>
               <div><p className="text-gray-500">Prioritas</p><p className="font-medium capitalize">{doc.priority}</p></div>
               <div><p className="text-gray-500">Tahapan Saat Ini</p><p className="font-medium">{doc.current_stage} / {(doc.stages ?? []).length || 5}</p></div>
             </div>
+            {doc.handler_type && (
+              <div className="mt-4 pt-4 border-t border-gray-100">
+                <p className="text-gray-500 text-sm mb-1">Pejabat Pembuat Akta</p>
+                <p className="text-sm font-medium">
+                  {HANDLER_TYPES.find((h) => h.value === doc.handler_type)?.label ?? doc.handler_type}
+                  {doc.handler_name ? ` — ${doc.handler_name}` : ''}
+                </p>
+                {doc.handler_region && <p className="text-xs text-gray-500 mt-0.5">Wilayah kerja: {doc.handler_region}</p>}
+              </div>
+            )}
             {doc.description && <div className="mt-4 pt-4 border-t border-gray-100"><p className="text-gray-500 text-sm mb-1">Deskripsi</p><p className="text-sm">{doc.description}</p></div>}
           </CollapsibleCard>
 
@@ -903,9 +923,9 @@ export default function AdminDocumentDetail() {
           {/* Client info */}
           {doc.client && (
             <CollapsibleCard
-              id="klien"
-              title="Informasi Klien"
-              collapsed={collapsedSections['klien']}
+              id="nasabah"
+              title="Informasi Nasabah"
+              collapsed={collapsedSections['nasabah']}
               onToggle={toggleSection}
             >
               <div className="space-y-2 text-sm">
@@ -914,7 +934,7 @@ export default function AdminDocumentDetail() {
                 <p><span className="text-gray-500">Email: </span>{doc.client.email ?? '—'}</p>
               </div>
               <Link to={`/admin/clients/${doc.client.id}`} className="btn-secondary w-full justify-center mt-3 text-xs">
-                Lihat Profil Klien
+                Lihat Profil Nasabah
               </Link>
             </CollapsibleCard>
           )}
@@ -989,6 +1009,40 @@ export default function AdminDocumentDetail() {
             <div>
               <label className="label">Catatan Internal</label>
               <textarea className="input h-20 resize-none" value={editOrderForm.notes} onChange={(e) => setEditOrderForm((f) => ({ ...f, notes: e.target.value }))} />
+            </div>
+            <div className="border-t border-gray-200 pt-4">
+              <label className="label">Pejabat Pembuat Akta</label>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+                {HANDLER_TYPES.map((o) => {
+                  const Icon = o.icon
+                  const active = editOrderForm.handler_type === o.value
+                  return (
+                    <button
+                      key={o.value}
+                      type="button"
+                      onClick={() => setEditOrderForm((f) => ({ ...f, handler_type: active ? '' : o.value, ...(active ? { handler_name: '', handler_region: '' } : {}) }))}
+                      className={`flex items-center gap-2 p-3 rounded-lg border text-left transition-colors ${
+                        active ? 'border-primary-600 bg-primary-50 ring-1 ring-primary-600' : 'border-gray-200 bg-white hover:bg-gray-50'
+                      }`}
+                    >
+                      <Icon size={18} className={active ? 'text-primary-700' : 'text-gray-500'} />
+                      <span className={`text-sm font-medium ${active ? 'text-primary-700' : 'text-gray-700'}`}>{o.label}</span>
+                    </button>
+                  )
+                })}
+              </div>
+              {editOrderForm.handler_type && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="label">Nama {HANDLER_TYPES.find((h) => h.value === editOrderForm.handler_type)?.label}</label>
+                    <input className="input" value={editOrderForm.handler_name} onChange={(e) => setEditOrderForm((f) => ({ ...f, handler_name: e.target.value }))} placeholder="Nama pejabat..." />
+                  </div>
+                  <div>
+                    <label className="label">Wilayah Kerja</label>
+                    <input className="input" value={editOrderForm.handler_region} onChange={(e) => setEditOrderForm((f) => ({ ...f, handler_region: e.target.value }))} placeholder="Wilayah kerja..." />
+                  </div>
+                </div>
+              )}
             </div>
           </form>
         </EditModal>

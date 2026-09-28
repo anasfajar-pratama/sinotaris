@@ -9,7 +9,7 @@ import {
 const navItems = [
   { to: '/admin/dashboard',     icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/admin/documents',     icon: FileText,         label: 'Order',        permission: 'documents.view' },
-  { to: '/admin/clients',       icon: Users,            label: 'Klien',         permission: 'clients.view' },
+  { to: '/admin/clients',       icon: Users,            label: 'Data Sumber & Nasabah',         permission: 'clients.view' },
   { to: '/admin/reports',       icon: BarChart2,        label: 'Laporan',       permission: 'reports.view' },
   { to: '/admin/notifications', icon: Bell,             label: 'Notifikasi' },
   { to: '/admin/users',         icon: Users,            label: 'Pengguna',      permission: 'users.view' },

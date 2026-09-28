@@ -92,8 +92,11 @@ Route::prefix('v1')->group(function () {
                 Route::post('/', [ClientController::class, 'store'])->middleware('permission:clients.create');
                 Route::get('/{id}', [ClientController::class, 'show'])->middleware('permission:clients.view');
                 Route::put('/{id}', [ClientController::class, 'update'])->middleware('permission:clients.edit');
+                Route::put('/{id}/members', [ClientController::class, 'updateMembers'])->middleware('permission:clients.edit');
+                Route::post('/{id}/documents', [ClientController::class, 'uploadDocument'])->middleware('permission:clients.edit');
+                Route::delete('/{id}/documents/{fileId}', [ClientController::class, 'deleteDocument'])->middleware('permission:clients.edit');
                 Route::delete('/{id}', [ClientController::class, 'destroy'])->middleware('permission:clients.delete');
-                Route::get('/{id}/documents', [ClientController::class, 'documents'])->middleware('permission:clients.view');
+                Route::get('/{id}/orders', [ClientController::class, 'orders'])->middleware('permission:clients.view');
             });
 
             // Reports
@@ -143,6 +146,7 @@ Route::prefix('v1')->group(function () {
                 Route::get('template/{document_type_id}', [OrderController::class, 'template'])->middleware('permission:documents.view');
 
                 Route::post('/{documentId}/actors', [OrderController::class, 'storeActor'])->middleware('permission:documents.edit');
+                Route::post('/{documentId}/actors/from-client', [OrderController::class, 'createActorFromClient'])->middleware('permission:documents.edit');
                 Route::put('/{documentId}/actors/{actorId}', [OrderController::class, 'updateActor'])->middleware('permission:documents.edit');
                 Route::delete('/{documentId}/actors/{actorId}', [OrderController::class, 'destroyActor'])->middleware('permission:documents.edit');
                 Route::post('/{documentId}/actors/{actorId}/documents', [OrderController::class, 'uploadActorDocument'])->middleware('permission:documents.edit');

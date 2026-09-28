@@ -234,7 +234,7 @@ class DashboardController extends Controller
 
     public function upcomingDeadlines(Request $request): JsonResponse
     {
-        $deadlines = Document::with(['client', 'documentType'])
+        $deadlines = Document::with(['client.members', 'documentType'])
             ->whereNotNull('deadline')
             ->where('deadline', '>=', now())
             ->where('deadline', '<=', now()->addDays(14))

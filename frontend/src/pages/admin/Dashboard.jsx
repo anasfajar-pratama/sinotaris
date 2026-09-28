@@ -215,7 +215,7 @@ export default function AdminDashboard() {
         <StatCard icon={AlertTriangle} label="Hampir Deadline" value={stats?.overdue} color="bg-red-500" sub="dalam 14 hari ke depan" />
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <StatCard icon={Users} label="Total Klien" value={stats?.total_clients} color="bg-purple-600" sub={period ? 'terdaftar di periode' : undefined} />
+        <StatCard icon={Users} label="Total Nasabah" value={stats?.total_clients} color="bg-purple-600" sub={period ? 'terdaftar di periode' : undefined} />
         <StatCard icon={TrendingUp} label="Kasus AJB Aktif" value={stats?.active_ajb} color="bg-indigo-600" sub={period ? `dari ${stats?.total_ajb} di periode` : `dari ${stats?.total_ajb} total`} />
         <StatCard icon={Activity} label="Selesai di Periode" value={stats?.completed_in_period ?? stats?.monthly_completed} color="bg-teal-600" sub={period ? undefined : 'bulan ini'} />
       </div>

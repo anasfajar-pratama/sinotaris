@@ -99,7 +99,7 @@ export default function AdminDocuments() {
                 <tr>
                   <th className="text-left px-4 py-3">No.Order</th>
                   <th className="text-left px-4 py-3">Judul & Jenis</th>
-                  <th className="text-left px-4 py-3">Klien</th>
+                  <th className="text-left px-4 py-3">Nasabah</th>
                   <th className="text-left px-4 py-3">Status</th>
                   <th className="text-left px-4 py-3">Prioritas</th>
                   <th className="text-left px-4 py-3">SLA</th>
