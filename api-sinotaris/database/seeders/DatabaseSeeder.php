@@ -18,6 +18,7 @@ class DatabaseSeeder extends Seeder
             ClientSeeder::class,
             DocumentSeeder::class,
             SystemSettingSeeder::class,
+            DynamicFormSeeder::class,
         ]);
     }
 }

@@ -69,6 +69,10 @@ class OrderTemplateSeeder extends Seeder
             ['company_name', 'Nama Perusahaan', 'text'],
             ['company_address', 'Alamat Perusahaan', 'textarea'],
             ['company_id', 'Nomor Induk Berusaha', 'text'],
+            ['gender', 'Jenis Kelamin', 'select', [
+                ['value' => 'male',   'label' => 'Laki-laki'],
+                ['value' => 'female', 'label' => 'Perempuan'],
+            ]],
         ];
         $fieldMap = [];
         foreach ($fields as $field) {
@@ -187,6 +191,16 @@ class OrderTemplateSeeder extends Seeder
                 'actors' => ['kreditur', 'debitur'],
                 'assets' => ['sertifikat-tanah'],
             ],
+            'peningkatan-hak' => [
+                'actors' => ['pemohon'],
+                'assets' => ['sertifikat-tanah'],
+                'fields' => ['name', 'nik', 'address', 'phone', 'marital_status', 'spouse_name', 'spouse_nik', 'gender'],
+            ],
+            'penggabungan-sertifikat' => [
+                'actors' => ['pemohon'],
+                'assets' => ['sertifikat-tanah'],
+                'fields' => ['name', 'nik', 'address', 'phone', 'marital_status', 'spouse_name', 'spouse_nik', 'gender'],
+            ],
         ];
 
         foreach ($templates as $slug => $config) {
@@ -210,7 +224,7 @@ class OrderTemplateSeeder extends Seeder
                     ['is_required' => true, 'sort_order' => $sort + 1]
                 );
 
-                foreach ($defaultFields as $fsort => $fieldKey) {
+                foreach ($config['fields'] ?? $defaultFields as $fsort => $fieldKey) {
                     if (!isset($fieldMap[$fieldKey])) continue;
                     DocumentTypeActorField::firstOrCreate(
                         ['document_type_id' => $dt->id, 'actor_type_id' => $actorId, 'profile_field_id' => $fieldMap[$fieldKey]],
